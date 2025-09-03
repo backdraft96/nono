@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- PWA를 위한 메타 태그 -->
+    <meta name="theme-color" content="#ffffff"/>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="노노그램 월드">
+    <link rel="apple-touch-icon" href="icon-192x192.png"> <!-- 아이콘 경로, 아래에서 data URL로 대체 -->
+    
+    <title>노노그램 월드</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&display=swap" rel="stylesheet">
+    
+    <!-- PWA Manifest (Data URL) -->
+    <link rel="manifest" href='data:application/manifest+json,{
+        "name": "노노그램 월드",
+        "short_name": "노노그램",
+        "start_url": ".",
+        "display": "standalone",
+        "background_color": "#f3f4f6",
+        "theme_color": "#4f46e5",
+        "description": "다양한 사이즈의 노노그램 퍼즐 게임",
+        "icons": [
+            {
+                "src": "data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Crect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%236366f1%22/%3E%3Cg fill=%22%23fff%22%3E%3Crect x=%2225%22 y=%2225%22 width=%2215%22 height=%2215%22/%3E%3Crect x=%2245%22 y=%2225%22 width=%2215%22 height=%2215%22/%3E%3Crect x=%2265%22 y=%2225%22 width=%2215%22 height=%2215%22/%3E%3Crect x=%2225%22 y=%2245%22 width=%2215%22 height=%2215%22/%3E%3Crect x=%2265%22 y=%2245%22 width=%2215%22 height=%2215%22/%3E%3Crect x=%2225%22 y=%2265%22 width=%2255%22 height=%2215%22/%3E%3C/g%3E%3C/svg%3E",
+                "sizes": "192x192",
+                "type": "image/svg+xml"
+            },
+            {
+                "src": "data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Crect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%236366f1%22/%3E%3Cg fill=%22%23fff%22%3E%3Crect x=%2225%22 y=%2225%22 width=%2215%22 height=%2215%22/%3E%3Crect x=%2245%22 y=%2225%22 width=%2215%22 height=%2215%22/%3E%3Crect x=%2265%22 y=%2225%22 width=%2215%22 height=%2215%22/%3E%3Crect x=%2225%22 y=%2245%22 width=%2215%22 height=%2215%22/%3E%3Crect x=%2265%22 y=%2245%22 width=%2215%22 height=%2215%22/%3E%3Crect x=%2225%22 y=%2265%22 width=%2255%22 height=%2215%22/%3E%3C/g%3E%3C/svg%3E",
+                "sizes": "512x512",
+                "type": "image/svg+xml"
+            }
+        ]
+    }'>
+    <style>
+        html, body {
+            height: 100%;
+            overflow: hidden;
+        }
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            touch-action: manipulation; /* 모바일에서 더블 탭 확대 방지 */
+        }
+        .game-grid {
+            display: grid;
+            border: 2px solid #333;
+            user-select: none; /* 드래그 선택 방지 */
+        }
+        .cell {
+            border: 1px solid #ddd;
+            background-color: #fff;
+            position: relative;
+            aspect-ratio: 1 / 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: background-color 0.2s;
+        }
+        .cell.filled {
+            background-color: #333;
+        }
+        .cell.marked::after {
+            content: '×';
+            color: #aaa;
+            /* JS에서 설정한 CSS 변수를 사용 */
+            font-size: var(--cell-mark-font-size, clamp(0.8rem, 5vmin, 2.5rem));
+            line-height: 1;
+        }
+        .clue-box {
+            display: flex;
+            align-items: center;
+            padding: 0.25rem;
+            font-weight: bold;
+            color: #374151;
+        }
+        .clue-box.col {
+            flex-direction: column; /* 세로 힌트 정렬 변경 */
+            justify-content: flex-end;
+            align-items: center; /* 가운데 정렬 */
+            padding-bottom: 0.5rem;
+        }
+        .clue-box.row {
+            justify-content: flex-end;
+        }
+        .clue-box .clue {
+            line-height: 1.1; /* 줄 높이 조정 */
+        }
+        /* 사이즈별 폰트 크기 동적 조절 (clamp(최소, 가변, 최대)) */
+        .size-5 .clue { font-size: clamp(1rem, 5vmin, 2.2rem); }
+        .size-10 .clue { font-size: clamp(0.8rem, 3.2vmin, 1.8rem); }
+        .size-15 .clue { font-size: clamp(0.6rem, 2.4vmin, 1.4rem); }
+        .size-20 .clue { font-size: clamp(0.5rem, 2vmin, 1.1rem); }
+
+        .col .clue {
+            display: block;
+            margin: 0.1rem 0; /* 세로 힌트 간격 조정 */
+        }
+        .row .clue {
+            margin: 0 0.2em; /* 가로 힌트 숫자 사이 간격 */
+        }
+        
+        .mode-btn.active {
+            background-color: #2563eb; /* Active blue color */
+            color: white;
+            box-shadow: 0 0 0 2px white, 0 0 0 4px #2563eb;
+        }
+
+        #game-board-container {
+            width: 100%;
+        }
+        
+        #game-board {
+            max-width: 98vmin;
+            max-height: 98vmin;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 flex flex-col items-center justify-center p-4">
+
+    <div id="app" class="w-full max-w-5xl h-full mx-auto bg-white rounded-2xl shadow-lg p-4 sm:p-8 flex flex-col">
+        <header class="text-center mb-6 shrink-0">
+            <h1 class="text-3xl sm:text-4xl font-bold text-gray-900">노노그램 월드</h1>
+            <p class="text-gray-600 mt-2">100개의 랜덤 스테이지에 도전해보세요!</p>
+        </header>
+
+        <div id="size-selector" class="flex flex-wrap justify-center gap-2 sm:gap-4 mb-6 shrink-0">
+            <button onclick="game.selectSize(5)" class="bg-teal-500 hover:bg-teal-600 text-white font-bold py-2 px-5 rounded-lg transition duration-300">5x5</button>
+            <button onclick="game.selectSize(10)" class="bg-sky-500 hover:bg-sky-600 text-white font-bold py-2 px-5 rounded-lg transition duration-300">10x10</button>
+            <button onclick="game.selectSize(15)" class="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-5 rounded-lg transition duration-300">15x15</button>
+            <button onclick="game.selectSize(20)" class="bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-5 rounded-lg transition duration-300">20x20</button>
+        </div>
+
+        <div id="game-area" class="w-full mx-auto hidden flex-grow min-h-0 flex flex-col">
+            <div class="flex flex-col sm:flex-row justify-between items-center mb-4 gap-4 shrink-0">
+                <div class="flex items-center gap-4">
+                    <div id="timer" class="text-2xl font-bold bg-gray-200 px-4 py-2 rounded-lg text-center">00:00</div>
+                    <div id="lives-container" class="flex items-center justify-center gap-1"></div>
+                </div>
+                 <div id="stage-indicator" class="text-lg font-bold text-gray-600 text-center"></div>
+                <div class="flex gap-2">
+                    <button id="back-btn" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg transition duration-300">뒤로가기</button>
+                </div>
+            </div>
+            
+             <!-- Action Buttons -->
+            <div class="flex flex-wrap justify-center items-center gap-2 mb-4 shrink-0">
+                <button id="undo-btn" class="bg-indigo-500 hover:bg-indigo-600 text-white font-bold p-2 rounded-lg transition duration-300 disabled:bg-gray-400 disabled:cursor-not-allowed" disabled title="되돌리기">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h10a8 8 0 018 8v2M3 10l4-4m-4 4l4 4" />
+                    </svg>
+                </button>
+                <button id="redo-btn" class="bg-indigo-500 hover:bg-indigo-600 text-white font-bold p-2 rounded-lg transition duration-300 disabled:bg-gray-400 disabled:cursor-not-allowed" disabled title="다시하기">
+                     <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M21 10h-10a8 8 0 00-8 8v2m18-10l-4-4m4 4l-4 4" />
+                    </svg>
+                </button>
+                <button id="reset-btn" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-lg transition duration-300">초기화</button>
+                <button id="check-btn" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg transition duration-300">정답 확인</button>
+            </div>
+
+
+            <!-- Touch Controls -->
+            <div class="flex justify-center gap-4 mb-4 shrink-0">
+                <button id="fill-mode-btn" class="mode-btn flex items-center gap-2 p-3 rounded-lg bg-gray-200 transition-all duration-200">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L15.232 5.232z"></path></svg>
+                    <span>채우기</span>
+                </button>
+                <button id="mark-mode-btn" class="mode-btn flex items-center gap-2 p-3 rounded-lg bg-gray-200 transition-all duration-200">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    <span>X 표시</span>
+                </button>
+            </div>
+
+            <div id="game-board-container" class="overflow-auto flex-grow flex justify-center items-center">
+                 <div id="game-board" class="shrink-0">
+                    <!-- JS will generate the game board layout here -->
+                </div>
+            </div>
+        </div>
+        <div id="game-message" class="text-center font-bold text-xl mt-4 min-h-[2rem] flex items-center justify-center shrink-0"></div>
+    </div>
+    
+    <!-- Success Modal -->
+    <div id="success-modal" class="hidden fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-2xl shadow-xl p-8 text-center max-w-sm w-full">
+            <h2 id="modal-title" class="text-3xl font-bold mb-4 text-gray-800"></h2>
+            <p id="modal-message" class="text-gray-700 mb-6 text-lg"></p>
+            <button id="modal-button" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-8 rounded-lg text-lg transition duration-300 w-full"></button>
+        </div>
+    </div>
+
+
+    <script>
+        // PWA 서비스 워커 등록
+        if ('serviceWorker' in navigator) {
+            const serviceWorkerContent = `
+                self.addEventListener('install', (event) => {
+                    event.waitUntil(
+                        caches.open('nonogram-cache-v1').then((cache) => {
+                            return cache.addAll(['.']); // 오프라인에서도 작동하도록 현재 페이지 캐싱
+                        })
+                    );
+                });
+
+                self.addEventListener('fetch', (event) => {
+                    event.respondWith(
+                        caches.match(event.request).then((response) => {
+                            return response || fetch(event.request);
+                        })
+                    );
+                });
+            `;
+            const blob = new Blob([serviceWorkerContent], { type: 'application/javascript' });
+            const swUrl = URL.createObjectURL(blob);
+
+            navigator.serviceWorker.register(swUrl)
+                .then(registration => {
+                    console.log('Service Worker registered with scope:', registration.scope);
+                }).catch(error => {
+                    console.log('Service Worker registration failed:', error);
+                });
+        }
+
+
+        class NonogramGame {
+            constructor() {
+                this.currentSize = 0;
+                this.currentPuzzleSolution = null;
+                this.puzzleSet = [];
+                this.currentStage = 0;
+                this.userBoard = []; // 0: empty, 1: filled, 2: marked
+                this.timerInterval = null;
+                this.seconds = 0;
+                this.isSolved = false;
+                this.isGameOver = false;
+                this.lives = 3;
+                this.isDragging = false;
+                this.dragAction = null; // 'fill', 'unfill', 'mark', 'unmark'
+                this.touchMode = 'fill'; // 'fill' or 'mark'
+                this.history = [];
+                this.redoHistory = [];
+            }
+
+            selectSize(size) {
+                this.stopTimer();
+                this.currentSize = size;
+                this.isSolved = false;
+                
+                const appEl = document.getElementById('app');
+                appEl.className = appEl.className.replace(/size-\d+/g, '');
+                appEl.classList.add(`size-${size}`);
+                
+                const root = document.documentElement;
+                switch(size) {
+                    case 5:
+                        root.style.setProperty('--cell-mark-font-size', 'clamp(1rem, 12vmin, 4rem)');
+                        break;
+                    case 10:
+                        root.style.setProperty('--cell-mark-font-size', 'clamp(0.8rem, 6vmin, 3rem)');
+                        break;
+                    case 15:
+                        root.style.setProperty('--cell-mark-font-size', 'clamp(0.7rem, 4vmin, 2rem)');
+                        break;
+                    case 20:
+                        root.style.setProperty('--cell-mark-font-size', 'clamp(0.6rem, 3vmin, 1.5rem)');
+                        break;
+                }
+
+                document.getElementById('game-area').classList.remove('hidden');
+                document.getElementById('size-selector').classList.add('hidden');
+                document.getElementById('game-message').textContent = '';
+                this.loadPuzzleSet(size);
+            }
+            
+            goBack() {
+                this.stopTimer();
+                document.getElementById('game-area').classList.add('hidden');
+                document.getElementById('size-selector').classList.remove('hidden');
+            }
+
+            loadPuzzleSet(size) {
+                const storedPuzzles = localStorage.getItem(`nonogramPuzzles_${size}`);
+                const storedProgress = localStorage.getItem(`nonogramProgress_${size}`);
+
+                if (storedPuzzles && storedProgress) {
+                    try {
+                        this.puzzleSet = JSON.parse(storedPuzzles);
+                        this.currentStage = parseInt(storedProgress, 10);
+                        if (!this.puzzleSet || this.puzzleSet.length < 1) throw new Error("Invalid puzzle set");
+                    } catch (e) {
+                        console.error("Failed to load saved data, generating new set.", e);
+                        this.generateNewPuzzleSet(size);
+                    }
+                } else {
+                    this.generateNewPuzzleSet(size);
+                }
+                this.loadStage(this.currentStage);
+            }
+
+            generateNewPuzzleSet(size) {
+                const solvedPuzzlesStr = localStorage.getItem(`nonogramSolvedPuzzles_${size}`) || '[]';
+                const solvedPuzzlesSet = new Set(JSON.parse(solvedPuzzlesStr));
+                const newPuzzles = [];
+                const newPuzzlesStrSet = new Set();
+                let attempts = 0;
+                const maxAttempts = 10000;
+
+                while (newPuzzles.length < 100 && attempts < maxAttempts) {
+                    attempts++;
+                    const puzzle = this.generateRandomPuzzle(size);
+                    const puzzleStr = JSON.stringify(puzzle);
+
+                    if (!solvedPuzzlesSet.has(puzzleStr) && !newPuzzlesStrSet.has(puzzleStr)) {
+                        newPuzzlesStrSet.add(puzzleStr);
+                        newPuzzles.push(puzzle);
+                    }
+                }
+                
+                if (newPuzzles.length < 100) {
+                    console.warn(`Could only generate ${newPuzzles.length} new unique puzzles.`);
+                }
+                
+                this.puzzleSet = newPuzzles;
+                this.currentStage = 0;
+
+                localStorage.setItem(`nonogramPuzzles_${size}`, JSON.stringify(this.puzzleSet));
+                localStorage.setItem(`nonogramProgress_${size}`, '0');
+            }
+            
+            isPuzzleValid(puzzle) {
+                const size = puzzle.length;
+                for (let i = 0; i < size; i++) {
+                    if (puzzle[i].reduce((sum, cell) => sum + cell, 0) === 0) return false;
+                }
+                for (let j = 0; j < size; j++) {
+                    let colSum = 0;
+                    for (let i = 0; i < size; i++) {
+                        colSum += puzzle[i][j];
+                    }
+                    if (colSum === 0) return false;
+                }
+                return true;
+            }
+
+            generateRandomPuzzle(size) {
+                let puzzle;
+                let isValid = false;
+                let attempts = 0;
+                const maxAttempts = 200;
+
+                while (!isValid && attempts < maxAttempts) {
+                    attempts++;
+                    puzzle = Array(size).fill(0).map(() => Array(size).fill(0));
+                    let filledCells = 0;
+                    const totalCells = size * size;
+                    const targetDensity = 0.4 + Math.random() * 0.2;
+
+                    for (let i = 0; i < size; i++) {
+                        for (let j = 0; j < size; j++) {
+                            if (Math.random() < targetDensity) {
+                                puzzle[i][j] = 1;
+                                filledCells++;
+                            }
+                        }
+                    }
+
+                    if (filledCells === 0 || filledCells === totalCells) continue;
+                    if (this.isPuzzleValid(puzzle)) isValid = true;
+                }
+                
+                if (!isValid) {
+                     console.error(`Could not generate a valid puzzle after ${maxAttempts} attempts.`);
+                     if (!puzzle) puzzle = Array(size).fill(0).map(() => Array.from({length: size}, (_, i) => i % 2));
+                }
+                return puzzle;
+            }
+
+            loadStage(stageIndex) {
+                this.hideModal();
+                if (stageIndex >= this.puzzleSet.length) {
+                    this.handleSetCompletion();
+                    return;
+                }
+
+                this.currentStage = stageIndex;
+                this.currentPuzzleSolution = this.puzzleSet[this.currentStage];
+                
+                this.stopTimer();
+                this.seconds = 0;
+                this.updateTimerDisplay();
+                this.isSolved = false;
+                this.isGameOver = false;
+                this.lives = 3;
+                this.updateLivesDisplay();
+                this.userBoard = Array(this.currentSize).fill(0).map(() => Array(this.currentSize).fill(0));
+                
+                this.history = [];
+                this.redoHistory = [];
+                this.updateUndoRedoButtons();
+
+                document.getElementById('stage-indicator').textContent = `단계 ${this.currentStage + 1} / ${this.puzzleSet.length}`;
+                document.getElementById('game-message').innerHTML = '';
+                document.getElementById('check-btn').classList.remove('hidden');
+                document.getElementById('check-btn').disabled = false;
+                document.getElementById('reset-btn').textContent = '초기화';
+                document.getElementById('reset-btn').classList.remove('hidden');
+
+                this.setupTouchControls();
+                this.generateBoard();
+                this.startTimer();
+            }
+            
+            setupTouchControls() {
+                const fillBtn = document.getElementById('fill-mode-btn');
+                const markBtn = document.getElementById('mark-mode-btn');
+                
+                fillBtn.onclick = () => this.setTouchMode('fill');
+                markBtn.onclick = () => this.setTouchMode('mark');
+                
+                this.setTouchMode('fill');
+            }
+            
+            setTouchMode(mode) {
+                this.touchMode = mode;
+                const fillBtn = document.getElementById('fill-mode-btn');
+                const markBtn = document.getElementById('mark-mode-btn');
+                
+                if (mode === 'fill') {
+                    fillBtn.classList.add('active');
+                    markBtn.classList.remove('active');
+                } else {
+                    markBtn.classList.add('active');
+                    fillBtn.classList.remove('active');
+                }
+            }
+
+            goToNextStage() {
+                const nextStage = this.currentStage + 1;
+                localStorage.setItem(`nonogramProgress_${this.currentSize}`, nextStage.toString());
+                this.loadStage(nextStage);
+            }
+
+            handleSetCompletion() {
+                this.stopTimer();
+                this.showModal(
+                    '🎉 축하합니다!',
+                    `${this.puzzleSet.length}단계를 모두 완료했습니다!`,
+                    '새로운 100판 시작하기',
+                    () => {
+                        this.generateNewPuzzleSet(this.currentSize);
+                        this.loadStage(0);
+                    }
+                );
+                document.getElementById('check-btn').classList.add('hidden');
+                document.getElementById('reset-btn').classList.add('hidden');
+            }
+
+            resetGame() {
+                this.loadStage(this.currentStage);
+            }
+
+            calculateClues(grid) {
+                const size = grid.length;
+                const rowClues = [];
+                const colClues = [];
+
+                for (let i = 0; i < size; i++) {
+                    rowClues.push(this.getCluesForLine(grid[i]));
+                    const col = grid.map(row => row[i]);
+                    colClues.push(this.getCluesForLine(col));
+                }
+                return { rowClues, colClues };
+            }
+
+            getCluesForLine(line) {
+                let count = 0;
+                const clues = [];
+                for (let i = 0; i < line.length; i++) {
+                    if (line[i] === 1) count++;
+                    else if (count > 0) {
+                        clues.push(count);
+                        count = 0;
+                    }
+                }
+                if (count > 0) clues.push(count);
+                return clues.length ? clues : [0];
+            }
+
+
+            generateBoard() {
+                const { rowClues, colClues } = this.calculateClues(this.currentPuzzleSolution);
+                const gameBoard = document.getElementById('game-board');
+
+                gameBoard.innerHTML = '';
+                gameBoard.style.display = 'inline-grid';
+                gameBoard.style.gridTemplateColumns = 'auto 1fr';
+                gameBoard.style.gridTemplateRows = 'auto 1fr';
+                
+                const cornerBox = document.createElement('div');
+                const colCluesContainer = document.createElement('div');
+                const rowCluesContainer = document.createElement('div');
+                const gridContainer = document.createElement('div');
+
+                gridContainer.id = 'game-grid';
+                gridContainer.className = 'game-grid';
+
+                colCluesContainer.style.display = 'grid';
+                colCluesContainer.style.gridTemplateColumns = `repeat(${this.currentSize}, 1fr)`;
+                rowCluesContainer.style.display = 'grid';
+                rowCluesContainer.style.gridTemplateRows = `repeat(${this.currentSize}, 1fr)`;
+                gridContainer.style.gridTemplateColumns = `repeat(${this.currentSize}, 1fr)`;
+                
+                gameBoard.appendChild(cornerBox);
+                gameBoard.appendChild(colCluesContainer);
+                gameBoard.appendChild(rowCluesContainer);
+                gameBoard.appendChild(gridContainer);
+
+                for (let i = 0; i < this.currentSize; i++) {
+                    const colClueBox = document.createElement('div');
+                    colClueBox.className = 'clue-box col';
+                    colClues[i].filter(c => c > 0).forEach(clue => {
+                        const clueEl = document.createElement('span');
+                        clueEl.className = 'clue';
+                        clueEl.textContent = clue;
+                        colClueBox.appendChild(clueEl);
+                    });
+                    colCluesContainer.appendChild(colClueBox);
+
+                    const rowClueBox = document.createElement('div');
+                    rowClueBox.className = 'clue-box row';
+                    rowClues[i].filter(c => c > 0).forEach(clue => {
+                        const clueEl = document.createElement('span');
+                        clueEl.className = 'clue';
+                        clueEl.textContent = clue;
+                        rowCluesContainer.appendChild(clueEl);
+                    });
+                    rowCluesContainer.appendChild(rowClueBox);
+
+                    for (let j = 0; j < this.currentSize; j++) {
+                        const cell = document.createElement('div');
+                        cell.className = 'cell';
+                        cell.dataset.row = i;
+                        cell.dataset.col = j;
+
+                        if ((i + 1) % 5 === 0 && i < this.currentSize - 1) cell.style.borderBottom = '2px solid #9ca3af';
+                        if ((j + 1) % 5 === 0 && j < this.currentSize - 1) cell.style.borderRight = '2px solid #9ca3af';
+                        if (i % 5 === 0 && i > 0) cell.style.borderTop = '2px solid #9ca3af';
+                        if (j % 5 === 0 && j > 0) cell.style.borderLeft = '2px solid #9ca3af';
+                        
+                        gridContainer.appendChild(cell);
+                    }
+                }
+                
+                gridContainer.addEventListener('mousedown', (e) => this.handleDragStart(e));
+                gridContainer.addEventListener('touchstart', (e) => this.handleDragStart(e), { passive: false });
+
+                gridContainer.addEventListener('mousemove', (e) => this.handleDragMove(e));
+                gridContainer.addEventListener('touchmove', (e) => this.handleDragMove(e), { passive: false });
+
+                window.addEventListener('mouseup', (e) => this.handleDragEnd(e));
+                window.addEventListener('touchend', (e) => this.handleDragEnd(e));
+                
+                gridContainer.addEventListener('contextmenu', e => e.preventDefault());
+                document.body.addEventListener('mouseleave', () => this.isDragging = false);
+            }
+            
+            saveStateForUndo() {
+                this.history.push(JSON.parse(JSON.stringify(this.userBoard)));
+                if (this.history.length > 30) this.history.shift();
+                this.redoHistory = [];
+                this.updateUndoRedoButtons();
+            }
+            
+            undo() {
+                if (this.history.length === 0) return;
+                this.redoHistory.push(JSON.parse(JSON.stringify(this.userBoard)));
+                this.userBoard = this.history.pop();
+                this.renderBoardFromState();
+                this.updateUndoRedoButtons();
+            }
+            
+            redo() {
+                if (this.redoHistory.length === 0) return;
+                this.history.push(JSON.parse(JSON.stringify(this.userBoard)));
+                this.userBoard = this.redoHistory.pop();
+                this.renderBoardFromState();
+                this.updateUndoRedoButtons();
+            }
+
+            updateUndoRedoButtons() {
+                document.getElementById('undo-btn').disabled = this.history.length === 0;
+                document.getElementById('redo-btn').disabled = this.redoHistory.length === 0;
+            }
+
+            renderBoardFromState() {
+                for (let i = 0; i < this.currentSize; i++) {
+                    for (let j = 0; j < this.currentSize; j++) {
+                        const cell = document.querySelector(`.cell[data-row='${i}'][data-col='${j}']`);
+                        if (!cell) continue;
+                        
+                        cell.classList.remove('filled', 'marked');
+                        const state = this.userBoard[i][j];
+                        if (state === 1) {
+                            cell.classList.add('filled');
+                        } else if (state === 2) {
+                            cell.classList.add('marked');
+                        }
+                    }
+                }
+            }
+
+
+            handleDragStart(e) {
+                if (this.isSolved || this.isGameOver) return;
+                e.preventDefault();
+                this.isDragging = true;
+                
+                const cell = this.getCellFromEvent(e);
+                if (cell) {
+                    this.saveStateForUndo();
+
+                    const row = parseInt(cell.dataset.row);
+                    const col = parseInt(cell.dataset.col);
+                    const currentState = this.userBoard[row][col];
+                    
+                    if (e.type === 'mousedown') {
+                        if (e.button === 0) {
+                            this.dragAction = (currentState === 1) ? 'unfill' : 'fill';
+                        } else if (e.button === 2) {
+                            this.dragAction = (currentState === 2) ? 'unmark' : 'mark';
+                        }
+                    } 
+                    else if (e.type === 'touchstart') {
+                        if (this.touchMode === 'fill') {
+                            this.dragAction = (currentState === 1) ? 'unfill' : 'fill';
+                        } else {
+                            this.dragAction = (currentState === 2) ? 'unmark' : 'mark';
+                        }
+                    }
+                    this.applyActionToCell(cell, this.dragAction);
+                }
+            }
+
+            handleDragMove(e) {
+                if (!this.isDragging) return;
+                e.preventDefault();
+                const cell = this.getCellFromEvent(e);
+                if (cell) {
+                    this.applyActionToCell(cell, this.dragAction);
+                }
+            }
+
+            handleDragEnd(e) {
+                if (this.isDragging) {
+                    this.isDragging = false;
+                    this.checkAndAutoCompleteLines();
+                    if (this.checkSolution()) {
+                        this.handleWin();
+                    }
+                }
+            }
+
+            getCellFromEvent(e) {
+                const coords = e.touches ? e.touches[0] : e;
+                return document.elementFromPoint(coords.clientX, coords.clientY)?.closest('.cell');
+            }
+            
+            applyActionToCell(cell, action) {
+                const row = parseInt(cell.dataset.row);
+                const col = parseInt(cell.dataset.col);
+
+                let stateChanged = false;
+                const oldState = this.userBoard[row][col];
+
+                switch (action) {
+                    case 'fill':
+                        if (oldState === 1) return;
+                        
+                        if (this.currentPuzzleSolution[row][col] === 0) {
+                            this.loseLife();
+                            cell.style.backgroundColor = '#fecaca';
+                            setTimeout(() => {
+                                cell.style.backgroundColor = '';
+                                if (this.userBoard[row][col] === 0) { // If it wasn't already marked by the user
+                                     this.userBoard[row][col] = 2;
+                                     cell.classList.add('marked');
+                                }
+                            }, 500);
+                            return;
+                        }
+                        this.userBoard[row][col] = 1;
+                        stateChanged = true;
+                        break;
+                    case 'unfill':
+                        if (oldState !== 1) return;
+                        this.userBoard[row][col] = 0;
+                        stateChanged = true;
+                        break;
+                    case 'mark':
+                        if (oldState !== 0) return;
+                        this.userBoard[row][col] = 2;
+                        stateChanged = true;
+                        break;
+                    case 'unmark':
+                        if (oldState !== 2) return;
+                        this.userBoard[row][col] = 0;
+                        stateChanged = true;
+                        break;
+                }
+                
+                if(stateChanged) {
+                    this.renderBoardFromState();
+                }
+            }
+
+            checkAndAutoCompleteLines() {
+                const size = this.currentSize;
+                const { rowClues: actualRowClues, colClues: actualColClues } = this.calculateClues(this.currentPuzzleSolution);
+                let changed = false;
+
+                for (let i = 0; i < size; i++) {
+                    const userRowClues = this.getCluesForLine(this.userBoard[i]);
+                    if (JSON.stringify(userRowClues) === JSON.stringify(actualRowClues[i])) {
+                        for (let j = 0; j < size; j++) {
+                           if (this.userBoard[i][j] === 0) {
+                               this.userBoard[i][j] = 2;
+                               changed = true;
+                           }
+                        }
+                    }
+                }
+
+                for (let j = 0; j < size; j++) {
+                    const userCol = this.userBoard.map(row => row[j]);
+                    const userColClues = this.getCluesForLine(userCol);
+                    if (JSON.stringify(userColClues) === JSON.stringify(actualColClues[j])) {
+                        for (let i = 0; i < size; i++) {
+                            if (this.userBoard[i][j] === 0) {
+                                this.userBoard[i][j] = 2;
+                                changed = true;
+                            }
+                        }
+                    }
+                }
+                if (changed) {
+                    this.renderBoardFromState();
+                }
+            }
+
+            loseLife() {
+                if (this.isGameOver || this.isSolved) return;
+                this.lives--;
+                this.updateLivesDisplay();
+                if (this.lives <= 0) this.handleGameOver();
+            }
+
+            handleGameOver() {
+                this.isGameOver = true;
+                this.stopTimer();
+                document.getElementById('game-message').textContent = '기회를 모두 사용했습니다!';
+                document.getElementById('check-btn').classList.add('hidden');
+                document.getElementById('reset-btn').textContent = '다시 도전';
+            }
+
+            updateLivesDisplay() {
+                const container = document.getElementById('lives-container');
+                container.innerHTML = '';
+                for (let i = 0; i < 3; i++) {
+                    const heartSVG = `
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-8 h-8 ${i < this.lives ? 'text-red-500' : 'text-gray-300'} transition-colors duration-300">
+                            <path d="m11.645 20.91-1.07-1.07a9.333 9.333 0 0 1-6.93-9.513 9.333 9.333 0 0 1 9.513-6.93c2.4 0 4.673 1.04 6.248 2.722a9.333 9.333 0 0 1 2.722 6.248 9.333 9.333 0 0 1-6.93 9.513l-1.07 1.07a1.5 1.5 0 0 1-2.122 0z" />
+                        </svg>
+                    `;
+                    container.innerHTML += heartSVG;
+                }
+            }
+            
+            checkSolution() {
+                for (let i = 0; i < this.currentSize; i++) {
+                    for (let j = 0; j < this.currentSize; j++) {
+                        if (this.userBoard[i][j] !== this.currentPuzzleSolution[i][j]) return false;
+                    }
+                }
+                return true;
+            }
+
+            saveSolvedPuzzle() {
+                const size = this.currentSize;
+                const solvedPuzzlesStr = localStorage.getItem(`nonogramSolvedPuzzles_${size}`) || '[]';
+                const solvedSet = new Set(JSON.parse(solvedPuzzlesStr));
+                const currentPuzzleStr = JSON.stringify(this.currentPuzzleSolution);
+                
+                solvedSet.add(currentPuzzleStr);
+                
+                localStorage.setItem(`nonogramSolvedPuzzles_${size}`, JSON.stringify(Array.from(solvedSet)));
+            }
+
+            handleWin() {
+                if (this.isSolved) return;
+                this.stopTimer();
+                this.isSolved = true;
+                
+                this.saveSolvedPuzzle();
+
+                const timeString = document.getElementById('timer').textContent;
+                if (this.currentStage < this.puzzleSet.length - 1) {
+                    this.showModal('🎉 정답입니다!', `클리어 시간: ${timeString}`, '다음 단계', () => this.goToNextStage());
+                } else {
+                    this.handleSetCompletion();
+                }
+                document.getElementById('check-btn').classList.add('hidden');
+            }
+
+            checkSolutionButtonHandler() {
+                if (this.checkSolution()) {
+                    this.handleWin();
+                } else {
+                    document.getElementById('game-message').textContent = '아직 완성되지 않았어요. 조금 더 힘내세요!';
+                }
+            }
+
+            startTimer() {
+                if (this.timerInterval) clearInterval(this.timerInterval);
+                this.timerInterval = setInterval(() => {
+                    if (this.isGameOver || this.isSolved) {
+                        this.stopTimer();
+                        return;
+                    }
+                    this.seconds++;
+                    this.updateTimerDisplay();
+                }, 1000);
+            }
+
+            stopTimer() {
+                clearInterval(this.timerInterval);
+                this.timerInterval = null;
+            }
+
+            updateTimerDisplay() {
+                const minutes = Math.floor(this.seconds / 60).toString().padStart(2, '0');
+                const secs = (this.seconds % 60).toString().padStart(2, '0');
+                document.getElementById('timer').textContent = `${minutes}:${secs}`;
+            }
+
+            showModal(title, message, buttonText, callback) {
+                const modal = document.getElementById('success-modal');
+                const modalTitle = document.getElementById('modal-title');
+                const modalMessage = document.getElementById('modal-message');
+                const modalButton = document.getElementById('modal-button');
+
+                modalTitle.textContent = title;
+                modalMessage.textContent = message;
+                modalButton.textContent = buttonText;
+                
+                const newButton = modalButton.cloneNode(true);
+                modalButton.parentNode.replaceChild(newButton, modalButton);
+                
+                newButton.addEventListener('click', () => {
+                    this.hideModal();
+                    callback();
+                });
+
+                modal.classList.remove('hidden');
+            }
+
+            hideModal() {
+                document.getElementById('success-modal').classList.add('hidden');
+            }
+        }
+
+        window.game = new NonogramGame();
+        document.getElementById('back-btn').addEventListener('click', () => window.game.goBack());
+        document.getElementById('undo-btn').addEventListener('click', () => window.game.undo());
+        document.getElementById('redo-btn').addEventListener('click', () => window.game.redo());
+        document.getElementById('check-btn').addEventListener('click', () => window.game.checkSolutionButtonHandler());
+        document.getElementById('reset-btn').addEventListener('click', () => window.game.resetGame());
+    </script>
+
+</body>
+</html>
+
+
