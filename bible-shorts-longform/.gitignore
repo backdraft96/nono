@@ -1,0 +1,6 @@
+fonts/
+work/
+output/
+clips.json
+settings.json
+__pycache__/
