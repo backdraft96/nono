@@ -207,37 +207,38 @@ def make_frame(bg, out_path, series, index, title, reference, verse_text):
     pad = 48
     lx0, lx1 = pad, PANEL_W - pad
     rx0, rx1 = W - PANEL_W + pad, W - pad
-    img = _panel_box(img, lx0, lx1, 70, H - 300)
-    img = _panel_box(img, rx0, rx1, 70, H - 300)
+    box_b = 540  # 글씨 상자 아래 끝 (그 아래는 배경이 보이도록)
+    img = _panel_box(img, lx0, lx1, 70, box_b)
+    img = _panel_box(img, rx0, rx1, 70, box_b)
     d = ImageDraw.Draw(img)
     inner = lx1 - lx0 - 64
 
     # ---- 왼쪽: 시리즈명 · 번호 · 제목
     lcx = (lx0 + lx1) / 2
-    f = font("serif_bold", 38)
-    y = _text_block(d, [series], f, 38, lcx, 110, GOLD)
+    f = font("serif_bold", 32)
+    y = _text_block(d, [series], f, 32, lcx, 110, GOLD)
     d.line((lcx - 120, y + 8, lcx + 120, y + 8), fill=GOLD, width=2)
-    f = font("title", 64)
-    y = _text_block(d, [f"No. {index:02d}"], f, 64, lcx, y + 40, CREAM)
-    f, lines, size = _fit(d, title, "title", inner, H - 300 - (y + 40) - 40, 92, 48, spacing=1.25, max_lines=5)
-    _text_block(d, lines, f, size, lcx, y + 40, (255, 255, 255), spacing=1.25)
+    f = font("title", 44)
+    y = _text_block(d, [f"No. {index:02d}"], f, 44, lcx, y + 32, CREAM)
+    f, lines, size = _fit(d, title, "title", inner, box_b - (y + 32) - 40, 60, 38, spacing=1.3, max_lines=4)
+    _text_block(d, lines, f, size, lcx, y + 32, (255, 255, 255), spacing=1.25)
 
     # ---- 오른쪽: 성경 구절
     rcx = (rx0 + rx1) / 2
-    f = font("serif_bold", 38)
-    y = _text_block(d, ["오늘의 말씀"], f, 38, rcx, 110, GOLD)
+    f = font("serif_bold", 32)
+    y = _text_block(d, ["오늘의 말씀"], f, 32, rcx, 110, GOLD)
     d.line((rcx - 120, y + 8, rcx + 120, y + 8), fill=GOLD, width=2)
     ref = reference or "말씀 묵상"
-    f, lines, size = _fit(d, ref, "title", inner, 220, 96, 56, spacing=1.15, max_lines=2)
-    y = _text_block(d, lines, f, size, rcx, y + 40, CREAM, spacing=1.15)
+    f, lines, size = _fit(d, ref, "title", inner, 160, 64, 42, spacing=1.2, max_lines=2)
+    y = _text_block(d, lines, f, size, rcx, y + 32, CREAM, spacing=1.15)
     if verse_text:
         quoted = f"“{verse_text}”"
-        f, lines, size = _fit(d, quoted, "serif", inner, H - 300 - (y + 40) - 40, 50, 30, spacing=1.5)
-        _text_block(d, lines, f, size, rcx, y + 40, (255, 255, 255), spacing=1.5)
+        f, lines, size = _fit(d, quoted, "serif", inner, box_b - (y + 36) - 36, 36, 24, spacing=1.55)
+        _text_block(d, lines, f, size, rcx, y + 36, (255, 255, 255), spacing=1.5)
     else:
-        f = font("serif", 40)
-        lines = ["말씀을 천천히", "따라 읽으며", "마음에 새겨 보세요"]
-        _text_block(d, lines, f, 40, rcx, y + 60, (255, 255, 255), spacing=1.6)
+        f = font("serif", 30)
+        lines = ["말씀을 천천히 따라 읽으며", "마음에 새겨 보세요"]
+        _text_block(d, lines, f, 30, rcx, y + 44, (255, 255, 255), spacing=1.6)
 
     # 쇼츠 자리 테두리 빛
     glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
