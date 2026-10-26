@@ -30,8 +30,12 @@ DEFAULT_SETTINGS = {
     "main_title": "하루를 여는 말씀 묵상",
     "sub_title": "성경 말씀 읽기와 묵상",
     "keywords": ["말씀", "묵상", "성경", "구절", "절", "장", "기도", "주님", "하나님", "예수"],
-    "exclude": ["광고", "공지", "라이브"],
+    "exclude": ["광고", "공지", "라이브", "오디오북"],
+    "require_reference": True,
 }
+
+YDL_BASE = {"quiet": True, "extractor_args": {"youtube": {"lang": ["ko"]}},
+            "http_headers": {"Accept-Language": "ko-KR,ko;q=0.9"}}
 
 BOOKS = [
     "창세기", "출애굽기", "레위기", "민수기", "신명기", "여호수아", "사사기", "룻기", "사무엘상", "사무엘하",
@@ -58,7 +62,7 @@ ABBR = {
     "유": "유다서", "계": "요한계시록",
 }
 _names = sorted(BOOKS, key=len, reverse=True) + sorted(ABBR, key=len, reverse=True)
-_NUM = r"(\d{1,3})\s*(?:장|:|：)\s*(\d{1,3})(?:\s*절)?(?:\s*[-~]\s*(\d{1,3})(?:\s*절)?)?"
+_NUM = r"(\d{1,3})\s*(?:장|:|：)\s*(\d{1,3})(?:\s*절)?(?:\s*[-~–—]\s*(\d{1,3})(?:\s*절)?)?"
 REF_RE = re.compile(r"(?<![가-힣])(" + "|".join(_names) + r")\s*" + _NUM)
 
 
@@ -69,6 +73,14 @@ def find_reference(text):
     book = ABBR.get(m.group(1), m.group(1))
     ref = f"{book} {m.group(2)}:{m.group(3)}"
     return ref + (f"-{m.group(4)}" if m.group(4) else "")
+
+
+def bible_key(clip):
+    ref = clip.get("reference", "")
+    m = re.match(r"(\S+) (\d+):(\d+)", ref)
+    if not m or m.group(1) not in BOOKS:
+        return (999, 0, 0)
+    return (BOOKS.index(m.group(1)), int(m.group(2)), int(m.group(3)))
 
 
 def find_verse_text(desc, ref):
@@ -89,7 +101,9 @@ def find_verse_text(desc, ref):
 
 
 def clean_title(title):
+    """'제목 | 창세기 1:1–3 | 잠깐의 말씀 묵상 #Shorts' → '제목'"""
     t = re.sub(r"#\S+", "", title or "")
+    t = t.split("|")[0]
     t = re.sub(r"\s{2,}", " ", t).strip(" |-")
     return t
 
@@ -113,46 +127,42 @@ def plan(args):
     st = load_settings()
     channel = (args.channel or st["channel"]).rstrip("/")
     print(f"쇼츠 목록 가져오는 중: {channel}/shorts")
-    with yt_dlp.YoutubeDL({"extract_flat": True, "quiet": True}) as ydl:
+    with yt_dlp.YoutubeDL({**YDL_BASE, "extract_flat": True}) as ydl:
         listing = ydl.extract_info(channel + "/shorts", download=False)
     entries = [e for e in listing.get("entries", []) if e.get("id")]
-    print(f"  쇼츠 {len(entries)}개 발견 → 상세 정보 확인")
+    entries.reverse()  # 채널 목록은 최신순 → 오래된 순으로
+    print(f"  쇼츠 {len(entries)}개 발견")
 
     clips = []
-    with yt_dlp.YoutubeDL({"quiet": True, "skip_download": True}) as ydl:
-        for e in entries:
-            if args.limit and len(clips) >= args.limit:
-                break
-            url = f"https://www.youtube.com/shorts/{e['id']}"
-            try:
-                info = ydl.extract_info(url, download=False)
-            except Exception as err:  # 비공개·삭제 영상 등
-                print(f"  건너뜀 {e['id']}: {err}")
-                continue
-            title, desc = info.get("title", ""), info.get("description", "")
-            blob = title + "\n" + desc
-            ref = find_reference(blob)
-            if any(x in blob for x in st["exclude"]):
-                continue
-            if not ref and not any(k in blob for k in st["keywords"]):
-                continue
-            clips.append({
-                "use": True,
-                "id": e["id"],
-                "url": url,
-                "upload_date": info.get("upload_date", ""),
-                "duration": info.get("duration"),
-                "title": clean_title(title),
-                "reference": ref,
-                "verse_text": find_verse_text(desc, ref),
-            })
-            print(f"  ✓ {ref or '(구절 미확인)':<16} {clean_title(title)}")
+    for e in entries:
+        title = e.get("title", "")
+        ref = find_reference(title)
+        if any(x in title for x in st["exclude"]):
+            continue
+        if st["require_reference"] and not ref:
+            continue
+        if not ref and not any(k in title for k in st["keywords"]):
+            continue
+        clips.append({
+            "use": True,
+            "id": e["id"],
+            "url": f"https://www.youtube.com/shorts/{e['id']}",
+            "title": clean_title(title),
+            "reference": ref,
+            "verse_text": "",
+        })
+        print(f"  ✓ {ref or '(구절 미확인)':<16} {clean_title(title)}")
+    if args.order == "newest":
+        clips.reverse()
+    elif args.order == "bible":
+        clips.sort(key=bible_key)
+    if args.limit:
+        clips = clips[:args.limit]
 
-    order = args.order or "oldest"
-    clips.sort(key=lambda c: c["upload_date"], reverse=(order == "newest"))
     CLIPS.write_text(json.dumps(clips, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"\n{len(clips)}개 선정 → {CLIPS.name} 저장")
-    print("제목·구절(reference)·본문(verse_text)을 확인/수정하고, 뺄 영상은 \"use\": false 로 바꾼 뒤 build 를 실행하세요.")
+    print("제목·구절(reference)을 확인하고, 화면에 넣을 성경 본문은 verse_text 에 적으세요.")
+    print("뺄 영상은 \"use\": false 로 바꾼 뒤 build 를 실행하세요.")
 
 
 # ---------------------------------------------------------------- build
@@ -176,16 +186,22 @@ def has_audio(path):
     return bool(out.stdout.strip())
 
 
-def download(clip):
-    dst = WORK / "src" / f"{clip['id']}.mp4"
+def download(clip, cookies=None, browser=None):
+    """shorts/<영상ID>.mp4 가 있으면 그 파일을 쓰고, 없으면 yt-dlp 로 받는다."""
     if clip.get("file"):
         return Path(clip["file"])
-    if dst.exists():
-        return dst
+    for local in (ROOT / "shorts" / f"{clip['id']}.mp4", WORK / "src" / f"{clip['id']}.mp4"):
+        if local.exists():
+            return local
+    dst = WORK / "src" / f"{clip['id']}.mp4"
     import yt_dlp
     dst.parent.mkdir(parents=True, exist_ok=True)
     opts = {"format": "bv*[height<=1920][ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b",
             "merge_output_format": "mp4", "outtmpl": str(dst), "quiet": True}
+    if cookies:
+        opts["cookiefile"] = cookies
+    if browser:
+        opts["cookiesfrombrowser"] = (browser,)
     with yt_dlp.YoutubeDL(opts) as ydl:
         ydl.download([clip["url"]])
     return dst
@@ -245,7 +261,7 @@ def build(args):
 
     for i, c in enumerate(clips, 1):
         print(f"[{i}/{len(clips)}] {c['reference'] or ''} {c['title']}")
-        src = download(c)
+        src = download(c, args.cookies, args.cookies_from_browser)
         png = assets.make_frame(bg, WORK / "frames" / f"{i:03d}.png", st["series"], i,
                                 c["title"], c.get("reference", ""), c.get("verse_text", ""))
         seg = WORK / "seg" / f"{i:03d}.mp4"
@@ -330,9 +346,12 @@ def main():
     a = sub.add_parser("plan", help="쇼츠 목록 수집 → clips.json")
     a.add_argument("--channel")
     a.add_argument("--limit", type=int, default=0, help="최대 클립 수 (0=전체)")
-    a.add_argument("--order", choices=["oldest", "newest"])
+    a.add_argument("--order", choices=["bible", "oldest", "newest"], default="bible",
+                   help="bible=성경 순서(기본), oldest=올린 순, newest=최신순")
     b = sub.add_parser("build", help="clips.json → 롱폼 영상 제작")
     b.add_argument("--bg", help="배경 이미지(교회·기도하는 손 사진). 없으면 교회 실루엣 배경 자동 생성")
+    b.add_argument("--cookies", help="yt-dlp 쿠키 파일(cookies.txt)")
+    b.add_argument("--cookies-from-browser", help="쿠키를 가져올 브라우저 (chrome, edge, firefox 등)")
     b.add_argument("--intro", type=float, default=5, help="오프닝 타이틀 길이(초), 0이면 생략")
     args = p.parse_args()
     {"plan": plan, "build": build}[args.cmd](args)

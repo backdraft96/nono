@@ -234,6 +234,10 @@ def make_frame(bg, out_path, series, index, title, reference, verse_text):
         quoted = f"“{verse_text}”"
         f, lines, size = _fit(d, quoted, "serif", inner, H - 300 - (y + 40) - 40, 50, 30, spacing=1.5)
         _text_block(d, lines, f, size, rcx, y + 40, (255, 255, 255), spacing=1.5)
+    else:
+        f = font("serif", 40)
+        lines = ["말씀을 천천히", "따라 읽으며", "마음에 새겨 보세요"]
+        _text_block(d, lines, f, 40, rcx, y + 60, (255, 255, 255), spacing=1.6)
 
     # 쇼츠 자리 테두리 빛
     glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
@@ -262,12 +266,12 @@ def make_thumbnail(bg, out_path, big_lines, badge, small, sample_frame=None):
     """1280x720 썸네일. big_lines: 큰 글씨 줄 목록, badge: 노란 띠 문구."""
     tw, th = 1280, 720
     base = bg.resize((tw, th), Image.LANCZOS).convert("RGBA")
-    base = Image.alpha_composite(base, Image.new("RGBA", (tw, th), (10, 6, 20, 90)))
+    base = Image.alpha_composite(base, Image.new("RGBA", (tw, th), (10, 6, 20, 30)))
     # 왼쪽에 어두운 그라데이션으로 글자 강조
     grad = Image.new("RGBA", (tw, th), (0, 0, 0, 0))
     gd = ImageDraw.Draw(grad)
     for x in range(int(tw * 0.75)):
-        gd.line((x, 0, x, th), fill=(0, 0, 0, int(190 * (1 - x / (tw * 0.75)))))
+        gd.line((x, 0, x, th), fill=(0, 0, 0, int(160 * (1 - x / (tw * 0.75)))))
     base = Image.alpha_composite(base, grad)
     if sample_frame is not None:
         fr = Image.open(sample_frame).convert("RGB")
@@ -275,6 +279,7 @@ def make_thumbnail(bg, out_path, big_lines, badge, small, sample_frame=None):
         fx, fy = tw - fr.width - 50, (th - fr.height) // 2
         g = _glow((tw, th), (fx + fr.width / 2, th / 2), fr.width * 0.8, (255, 210, 140), 180)
         base = Image.alpha_composite(base, g)
+        ImageDraw.Draw(base).rectangle((fx - 6, fy - 6, fx + fr.width + 5, fy + fr.height + 5), fill=GOLD)
         base.paste(fr, (fx, fy))
     d = ImageDraw.Draw(base)
     f = font("serif_bold", 40)
