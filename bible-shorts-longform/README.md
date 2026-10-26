@@ -26,3 +26,10 @@ python make_longform.py build --bg 기도하는손.jpg   # 배경 사진 직접 
 - `youtube_texts.txt` 제목 후보·설명·고정댓글·태그
 
 ※ 본인 채널 영상이거나 권리자의 허락을 받은 영상만 사용하세요.
+
+## 나노바나나 배경 만들기 (선택)
+```
+set GEMINI_API_KEY=발급받은키        # Windows (macOS/Linux: export GEMINI_API_KEY=...)
+python nanobanana.py                # backgrounds/church.png, hands.png, chapel.png 생성
+python make_longform.py build --bg backgrounds/hands.png
+```

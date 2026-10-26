@@ -4,3 +4,5 @@ output/
 clips.json
 settings.json
 __pycache__/
+backgrounds/
+preview/
